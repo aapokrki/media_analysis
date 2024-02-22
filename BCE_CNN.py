@@ -31,12 +31,12 @@ val_gt_path = r'E:\Koulu\Vuosi4\Media Analysis\CNNtest\validation\snippet_edge'
 model_path = r'E:\Koulu\Vuosi4\Media Analysis\CNNtest\model\model6.pth'
 
 # Parameters
-num_epochs = 20
-img_amount = 3200
-val_amount = 320
-batch_size = 32
+num_epochs = 80
+img_amount = 4000
+val_amount = 400
+batch_size = 4
 
-min_loss_threshold = 0.01
+min_loss_threshold = 0.0001
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -195,7 +195,7 @@ if __name__ == "__main__":
     model.to(device)
 
     criterion = AdjustedBCELoss(lambda_=5, gamma=2)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
+    optimizer = torch.optim.Adam(model.parameters(), betas=(0, 0.9), lr=0.0001)
     scheduler = StepLR(optimizer, step_size=20, gamma=0.1)
 
     transform = transforms.ToTensor()
