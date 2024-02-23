@@ -6,57 +6,59 @@ from torchvision import transforms
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
+import torch.optim
 from torch.optim.lr_scheduler import StepLR
-import matplotlib.pyplot as plt
 
-
-# Input images
-edge_missing_path = r'E:\Koulu\Vuosi4\Media Analysis\CNNtest\snippets_new_imp_edges_missing'
-img_missing_path =  r'E:\Koulu\Vuosi4\Media Analysis\CNNtest\snippets_new_imp_img_missing'
-mask_path = r'E:\Koulu\Vuosi4\Media Analysis\CNNtest\masks_new_imp'
-
-# Ground truth
-gt_path = r'E:\Koulu\Vuosi4\Media Analysis\CNNtest\snippets_new_imp_edges_gt'
-
+# New paths
+img_path = r'.\data\train\img'
+edge_gt_path = r'.\data\train\img_edges_gt'
+img_missing_data_path = r'.\data\train\img_missing_data'
+edge_missing_data_path = r'.\data\train\img_edges_missing_data'
+masks_path = r'.\data\train\masks'
 
 # Validation set paths
-val_img_missing_path = r'E:\Koulu\Vuosi4\Media Analysis\CNNtest\validation\snippet_img_missing'
-val_edge_missing_path = r'E:\Koulu\Vuosi4\Media Analysis\CNNtest\validation\snippet_edge_missing'
-val_mask_path = r'E:\Koulu\Vuosi4\Media Analysis\CNNtest\validation\masks'
-val_gt_path = r'E:\Koulu\Vuosi4\Media Analysis\CNNtest\validation\snippet_edge'
-
+val_img_missing_path = r'.\data\validation\img_missing'
+val_edge_missing_path = r'.\data\validation\edge_missing'
+val_mask_path = r'.\data\validation\masks'
+val_gt_path = r'.\data\validation\edge_gt'
 
 # Where to save model
-model_path = r'E:\Koulu\Vuosi4\Media Analysis\CNNtest\model\model6.pth'
+model_path = r'.\model\model8.pth'
 
 # Parameters
-num_epochs = 80
-img_amount = 4000
+num_epochs = 20
+img_amount = 8000
 val_amount = 400
 batch_size = 4
 
-min_loss_threshold = 0.0001
+# Training is stopped early if validation loss goes under this threshold
+min_loss_threshold = 0.001
 
+# Parameters for adjusted BCE loss
+lambda_ = 5
+gamma = 2
+
+# Parameters for learning rate scheduler
+step_size_sc = 20
+gamma_sc = 0.1
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 CUDA_LAUNCH_BLOCKING=1
 
-
 # Define the Encoder
 class Encoder(nn.Module):
-    def __init__(self, in_channels=3):
+    def __init__(self, in_channels=5):
         super(Encoder, self).__init__()
         
-        self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, padding=0)
+        self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=3, padding=0)
         self.norm1 = nn.InstanceNorm2d(64)
         self.relu1 = nn.ReLU(inplace=True)
 
-        self.conv2 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=4, stride=2, padding=1)
+        self.conv2 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=2)
         self.norm2 = nn.InstanceNorm2d(128)
         self.relu2 = nn.ReLU(inplace=True)
 
-        self.conv3 = nn.Conv2d(in_channels=128, out_channels=256, kernel_size=4, stride=2, padding=1)
+        self.conv3 = nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, stride=2)
         self.norm3 = nn.InstanceNorm2d(256)
         self.relu3 = nn.ReLU(inplace=True)
 
@@ -114,7 +116,7 @@ class Decoder(nn.Module):
 class EdgeCNN(nn.Module):
     def __init__(self):
         super(EdgeCNN, self).__init__()
-        self.encoder = Encoder(in_channels=3)
+        self.encoder = Encoder(in_channels=5)
         self.residual_blocks = nn.ModuleList([ResidualBlock(256, 256) for _ in range(8)])
         self.decoder = Decoder(in_channels=256)
 
@@ -137,7 +139,6 @@ class AdjustedBCELoss(nn.Module):
         self.gamma = gamma
 
     def forward(self, output, target, mask):
-        # Compute binary cross-entropy loss
 
         # Loss function as defined in the paper
         bce_loss = F.binary_cross_entropy(output, target, reduction='none')
@@ -169,7 +170,7 @@ class EdgeDataset(Dataset):
         mask_path = os.path.join(self.mask_path, file_name + '.png')
         gt_edge_path = os.path.join(self.gt_path, file_name + '.tif')
 
-        Im = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+        Im = cv2.imread(img_path, cv2.IMREAD_COLOR)
         Sm = cv2.imread(edge_path, cv2.IMREAD_GRAYSCALE)
         M = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
         gt_edge = cv2.imread(gt_edge_path, cv2.IMREAD_GRAYSCALE)
@@ -189,18 +190,17 @@ class EdgeDataset(Dataset):
         return Im, Sm, M, gt_edge
 
 
-
 if __name__ == "__main__":
     model = EdgeCNN()
     model.to(device)
 
-    criterion = AdjustedBCELoss(lambda_=5, gamma=2)
+    criterion = AdjustedBCELoss(lambda_, gamma)
     optimizer = torch.optim.Adam(model.parameters(), betas=(0, 0.9), lr=0.0001)
-    scheduler = StepLR(optimizer, step_size=20, gamma=0.1)
+    scheduler = StepLR(optimizer, step_size=step_size_sc, gamma=gamma_sc)
 
     transform = transforms.ToTensor()
 
-    train_dataset = EdgeDataset(img_missing_path, edge_missing_path, mask_path, gt_path, img_amount, transform=transform)
+    train_dataset = EdgeDataset(img_missing_data_path, edge_missing_data_path, masks_path, edge_gt_path, img_amount, transform=transform)
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
     val_dataset = EdgeDataset(val_img_missing_path, val_edge_missing_path, val_mask_path, val_gt_path, val_amount, transform=transform)
