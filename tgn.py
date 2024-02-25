@@ -43,19 +43,36 @@ class L1Loss(nn.Module):
     def forward(self, output, target, mask):
         # Compute L1 loss
 
-        # Loss function as defined in the
+        # Loss function as defined in the paper
         L1_loss = F.l1_loss(output, target, reduction='none')
         adjusted_loss = self.lambda_ * np.absolute(mask * L1_loss) + np.absolute((1 - mask) * L1_loss)
         return torch.mean(adjusted_loss)
 
 
 class StyleLoss(nn.Module):
-    def __init__(self, lambda_=250):
+    def __init__(self):
         super(StyleLoss, self).__init__()
-        self.lambda_ = lambda_
 
-    def forward(self, output, target, mask):
-        pass
+    @staticmethod
+    def gram_matrix(feature):
+        a, b, c, d = feature.size()  # a=batch size(=1)
+        # b=number of feature maps
+        # (c,d)=dimensions of a f. map (N=c*d)
+
+        features = feature.view(a * b, c * d)  # resize F_XL into \hat F_XL
+
+        G = torch.mm(features, features.t())  # compute the gram product
+
+        # we 'normalize' the values of the gram matrix
+        # by dividing by the number of element in each feature maps.
+        return G.div(a * b * c * d)
+
+    def forward(self, output, target):
+        # Compute style loss
+        G_target = self.gram_matrix(target).detach()
+        G_output = self.gram_matrix(output)
+        style_loss = F.mse_loss(G_output, G_target)
+        return style_loss
 
 
 def main():
@@ -65,17 +82,8 @@ def main():
     # conv
     # IN
 
-
-
-
-
-
-
     pass
-
 
 
 if __name__ == '__main__':
     main()
-
-
