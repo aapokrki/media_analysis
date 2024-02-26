@@ -35,7 +35,7 @@ image_path = f'.\\data\\test\\snippet_img_missing\\{file_name}.tif'
 mask_path = f'.\\data\\test\masks\\{file_name}.png'
 edge_map_path = f'.\\data\\test\\snippet_edge_missing\\{file_name}.tif'
 gt_path = f'.\\data\\test\\snippet_edge\\{file_name}.tif'
-edge_map_path = f'.\\data\\test\\BCE_edgemaps\\{file_name}.png'
+#edge_map_path = f'.\\data\\test\\BCE_edgemaps\\{file_name}.png'
 
 # Load the image, mask, and edge map
 image = cv2.imread(image_path, cv2.IMREAD_COLOR)
