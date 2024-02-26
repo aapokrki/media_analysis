@@ -24,7 +24,7 @@ val_mask_path = r'.\data\validation\masks'
 val_gt_path = r'.\data\validation\edge_gt'
 
 # Where to save model
-model_path = r'.\model\model_adv_5.pth'
+model_path = r'.\model\PEGN_G2.pth'
 
 # Parameters
 num_epochs = 15
