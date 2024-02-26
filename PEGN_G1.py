@@ -23,7 +23,7 @@ val_mask_path = r'.\data\validation\masks'
 val_gt_path = r'.\data\validation\edge_gt'
 
 # Where to save model
-model_path = r'.\model\model8.pth'
+model_path = r'.\model\model_G1.pth'
 
 # Parameters
 num_epochs = 20
@@ -86,9 +86,6 @@ class ResidualBlock(nn.Module):
         out = self.conv2(out)
         out = self.norm2(out)
         out += identity
-        
-        # edge-connect left this last relu out so it is left out here also
-        #out = self.relu(out)
 
         return out
     
@@ -113,9 +110,9 @@ class Decoder(nn.Module):
         return x
 
 # Define the complete CNN model
-class EdgeCNN(nn.Module):
+class G1(nn.Module):
     def __init__(self):
-        super(EdgeCNN, self).__init__()
+        super(G1, self).__init__()
         self.encoder = Encoder(in_channels=5)
         self.residual_blocks = nn.ModuleList([ResidualBlock(256, 256) for _ in range(8)])
         self.decoder = Decoder(in_channels=256)
@@ -191,7 +188,7 @@ class EdgeDataset(Dataset):
 
 
 if __name__ == "__main__":
-    model = EdgeCNN()
+    model = G1()
     model.to(device)
 
     criterion = AdjustedBCELoss(lambda_, gamma)
@@ -207,6 +204,7 @@ if __name__ == "__main__":
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     for epoch in range(num_epochs):
+        
         # Training loop
         model.train()
         running_loss = 0.0
@@ -220,7 +218,6 @@ if __name__ == "__main__":
 
             predicted = model(Im, Sm, M)
             loss = criterion(predicted, gt_edge, M)
-
             loss.backward()
             optimizer.step()
 
