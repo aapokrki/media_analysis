@@ -2,23 +2,40 @@ import torch
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-from BCE_CNN import EdgeCNN
+from PEGN_G1 import G1
+from PEGN_G2 import G2
+import os
 
-model_path = r'.\model\model8.pth'
-model = EdgeCNN()
+# Specify which model you want to use. G1 for BCE loss (first part of PEGN) and G2 for adversarial loss (second part of PEGN)
+mode = "G2"
+
+# Name of the test image (assuming the image, mask, edge map and ground truth are named the same)
+file_name = "465ad597_snippet"
+
+# Edit if you want to save the produced image
+save_image = False
+save_folder = f'.\\data\\test\\predicted_edgemaps\\{file_name}.tif'
+
+# Edit threshold for which pixels are selected to the output
+threshold = 0.5
+
+
+
+if mode == "G1":
+    model_path = r'.\model\model_G1.pth'
+    model = G1()
+elif mode == "G2":
+    model_path = r'.\model\model_G2.pth'
+    model = G2()
+
 model.load_state_dict(torch.load(model_path))
 model.eval()
-
-
-# Path to the test image (assuming the image, mask, edge map and ground truth are named the same)
-file_name = "a46492fa_snippet"
 
 image_path = f'.\\data\\test\\snippet_img_missing\\{file_name}.tif'
 mask_path = f'.\\data\\test\masks\\{file_name}.png'
 edge_map_path = f'.\\data\\test\\snippet_edge_missing\\{file_name}.tif'
 gt_path = f'.\\data\\test\\snippet_edge\\{file_name}.tif'
-
-threshold = 0.5
+edge_map_path = f'.\\data\\test\\BCE_edgemaps\\{file_name}.png'
 
 # Load the image, mask, and edge map
 image = cv2.imread(image_path, cv2.IMREAD_COLOR)
@@ -53,10 +70,8 @@ combined_input = torch.cat((R_tensor, G_tensor, B_tensor), dim=1)
 with torch.no_grad():
     output = model(combined_input, edge_map_tensor, mask_tensor)
 
-
 # Calculate some visualizations
 predicted_edge_map = output.squeeze().numpy()
-
 probability_map = output  
 edge_map_thresholded = torch.where(probability_map > threshold, torch.tensor(1.0), torch.tensor(0.0))
 edge_map_thresholded_numpy = edge_map_thresholded.squeeze().cpu().numpy()
@@ -64,6 +79,10 @@ diff = np.abs(edge_map_thresholded_numpy - edge_map)
 diff_colored = np.zeros_like(image)
 diff_colored[:,:,1] = diff * 255
 overlay = cv2.addWeighted(cv2.cvtColor(edge_map, cv2.COLOR_GRAY2BGR), 0.5, diff_colored, 0.5, 0)
+
+if save_image:
+    thresholded_edge_map_path = os.path.join(save_folder, f'{file_name}.tif')
+    cv2.imwrite(thresholded_edge_map_path, edge_map_thresholded_numpy * 255)
 
 # Visualize
 plt.figure(figsize=(15, 15))
