@@ -3,36 +3,122 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import numpy as np
+from torch.nn.utils import spectral_norm
 from torchvision.models import vgg19, VGG19_Weights
+
+
+# Define the Encoder
+class Encoder(nn.Module):
+    def __init__(self, in_channels=4):
+        super(Encoder, self).__init__()
+        self.conv1 = spectral_norm(nn.Conv2d(in_channels, out_channels=64, kernel_size=3, stride=2, padding=0))
+        self.in1 = nn.InstanceNorm2d(64)
+        self.relu1 = nn.ReLU(inplace=True)
+        self.conv2 = spectral_norm(nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=2))
+        self.in2 = nn.InstanceNorm2d(128)
+        self.relu2 = nn.ReLU(inplace=True)
+        self.conv3 = spectral_norm(nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, stride=2))
+        self.in3 = nn.InstanceNorm2d(256)
+        self.relu3 = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.in1(x)
+        x = self.relu1(x)
+        x = self.conv2(x)
+        x = self.in2(x)
+        x = self.relu2(x)
+        x = self.conv3(x)
+        x = self.in3(x)
+        x = self.relu3(x)
+        return x
 
 
 # Define the Residual Block
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(ResidualBlock, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=2, stride=1, dilation=2)
-        self.norm1 = nn.InstanceNorm2d(out_channels)
+        self.conv1 = spectral_norm(nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=2, stride=1, dilation=2))
+        self.in1 = nn.InstanceNorm2d(out_channels)
         self.relu = nn.ReLU(inplace=True)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
-        self.norm2 = nn.InstanceNorm2d(out_channels)
+        self.conv2 = spectral_norm(nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1))
+        self.in2 = nn.InstanceNorm2d(out_channels)
 
     def forward(self, x):
         identity = x
         out = self.conv1(x)
-        out = self.norm1(out)
+        out = self.in1(out)
         out = self.relu(out)
         out = self.conv2(out)
-        out = self.norm2(out)
+        out = self.in2(out)
         out += identity
-
-        # edge-connect left this last relu out so it is left out here also
-        # out = self.relu(out)
-
         return out
 
 
-# Generator same as G2 in PEGN
-# Discriminator same as in PEGN
+# Define the Decoder
+class Decoder(nn.Module):
+    def __init__(self, in_channels):
+        super(Decoder, self).__init__()
+        self.upconv1 = spectral_norm(nn.ConvTranspose2d(in_channels, 128, kernel_size=3, stride=2, padding=1))
+        self.in1 = nn.InstanceNorm2d(128)
+        self.relu1 = nn.ReLU(inplace=True)
+        self.upconv2 = spectral_norm(nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=0))
+        self.in2 = nn.InstanceNorm2d(64)
+        self.relu2 = nn.ReLU(inplace=True)
+        self.upconv3 = nn.ConvTranspose2d(64, 1, kernel_size=3, stride=2, padding=0)
+        self.in3 = nn.InstanceNorm2d(1)
+        self.relu3 = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        x = self.upconv1(x)
+        x = self.in1(x)
+        x = self.relu1(x)
+        x = self.upconv2(x)
+        x = self.in2(x)
+        x = self.relu2(x)
+        x = self.upconv3(x)
+        x = self.in3(x)
+        x = self.relu3(x)
+        return x
+
+
+class Discriminator(nn.Module):
+    def __init__(self):
+        super(Discriminator, self).__init__()
+        self.conv1 = spectral_norm(nn.Conv2d(in_channels=1, out_channels=64, kernel_size=3, stride=2, padding=1))
+        self.conv2 = spectral_norm(nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=2, padding=1))
+        self.conv3 = spectral_norm(nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, stride=2, padding=1))
+        self.conv4 = spectral_norm(nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, stride=2, padding=0))
+        self.conv5 = (nn.Conv2d(in_channels=512, out_channels=1, kernel_size=4, stride=2, padding=0))
+
+    def forward(self, x):
+        x = F.leaky_relu(self.conv1(x), negative_slope=0.2)
+        x = F.leaky_relu(self.conv2(x), negative_slope=0.2)
+        x = F.leaky_relu(self.conv3(x), negative_slope=0.2)
+        x = F.leaky_relu(self.conv4(x), negative_slope=0.2)
+        x = F.leaky_relu(self.conv5(x))
+        x = torch.sigmoid(x)
+        return x
+
+
+class Generator(nn.Module):
+    def __init__(self):
+        super(Generator, self).__init__()
+        self.encoder = Encoder(in_channels=4)
+        self.residual_blocks = nn.ModuleList([ResidualBlock(256, 256) for _ in range(8)])
+        self.decoder = Decoder(in_channels=256)
+
+    def forward(self, Im, Spred):
+        # Concatenate the three images along the channel dimension
+        combined_input = torch.cat((Im, Spred), dim=1)
+
+        x = self.encoder(combined_input)
+        for block in self.residual_blocks:
+            x = block(x)
+        x = self.decoder(x)
+        x = torch.sigmoid(x)
+
+        return x
 
 # total loss = lambda1 * L1_loss + lambda2 * adversarial_loss + lambda3 * style_loss
 
