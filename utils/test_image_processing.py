@@ -1,52 +1,50 @@
-import os
-import time
-import torch
+
 import cv2
 from matplotlib import pyplot as plt
 from utils.image_processor import ImageProcessor
-import numpy as np
-from random import randint, seed
 
-def create_random_mask(image, percentage):
-    return None
+'''
+Demonstrates the capabilities of the ImageProcessor class by performing various image manipulations
+and displaying the results using matplotlib.
+'''
+if __name__ == '__main__':
+    p = ImageProcessor( '2_Ortho_RGB', 'test_mask')
+    image_path = p.train_files[0]
+    img = cv2.imread(image_path)
 
-def compare_images(im1, im2):
-    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+    # Generate masked image ("return_mask = True" also returns the used mask)
+    masked_image, mask = p.apply_random_mask(img, "train", True)
 
-    axes[0].imshow(cv2.cvtColor(im1, cv2.COLOR_BGR2RGB))
-    axes[0].set_title('Original Image')
+    # Image manipulation
+    img_scaled = p.random_scaling(img)
+    img_flipped = p.flip(img)
+    img_cropped = p.random_crop(img, 100, 512)
 
-    axes[1].imshow(cv2.cvtColor(im2, cv2.COLOR_BGR2RGB))
-    axes[1].set_title('Edited Image')
+    # Show images
+    fig, axes = plt.subplots(2, 3, figsize=(10, 5))
 
+    axes[0, 0].imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    axes[0, 0].set_title('Original Image')
+
+    axes[0, 1].imshow(cv2.cvtColor(mask, cv2.COLOR_BGR2RGB))
+    axes[0, 1].set_title('Mask')
+
+    axes[0, 2].imshow(cv2.cvtColor(masked_image, cv2.COLOR_BGR2RGB))
+    axes[0, 2].set_title('Masked Image')
+
+    axes[1, 0].imshow(cv2.cvtColor(img_scaled, cv2.COLOR_BGR2RGB))
+    axes[1, 0].set_title('Image with random scaling')
+
+    axes[1, 1].imshow(cv2.cvtColor(img_flipped, cv2.COLOR_BGR2RGB))
+    axes[1, 1].set_title('Image flipped')
+
+    axes[1, 2].imshow(cv2.cvtColor(img_cropped, cv2.COLOR_BGR2RGB))
+    axes[1, 2].set_title('Image with random crop')
+
+    plt.tight_layout()
     plt.show()
 
-if __name__ == '__main__':
-    p = ImageProcessor(os.path.dirname(__file__), '2_Ortho_RGB', 'mask')
 
-
-    image = os.path.join(p.train_path, p.train_files[0])
-    p.apply_random_mask(image, "train")
-
-
-    # Read a segmented image which to test
-    #im1 = cv2.imread(os.path.join(p.train_path, p.train_files[4]))
-
-    # Scale the image randomly between 0.5 and 2.0
-    #im2 = p.random_scaling(im1)
-
-    # Flip the image horizontally
-    #im2 = p.flip(im2)
-
-    # Crop the image to a random size with the width and height sizes being the limits
-    #im2 = p.random_crop(im2, 100, 512)
-
-    #mask = create_random_mask(im1, 10)
-
-    # Compare images side by side
-    #compare_images(im1,mask)
-
-    #print(mask)
 
 
 
