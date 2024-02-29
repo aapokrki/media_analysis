@@ -172,6 +172,42 @@ class ImageProcessor:
         masked_image = image * mask[:, :, np.newaxis]
         return masked_image
 
+
+    def apply_random_mask(self, image_path, type = "train"):
+
+        if type == "train":
+            mask_file = random.choice(self.train_mask_files)
+        elif type == "test":
+            mask_file = random.choice(self.test_mask_files)
+        elif type == "validation":
+            mask_file = random.choice(self.validation_mask_files)
+        else:
+            raise Exception("Invalid type")
+
+        mask_path = os.path.join(self.mask_path, mask_file)
+        mask = cv2.imread(mask_path)
+        image = cv2.imread(image_path)
+
+        masked_image = np.where(mask == 255, 255, image)
+
+        '''
+        fig, axes = plt.subplots(1, 3, figsize=(10, 5))
+
+        axes[0].imshow(mask)
+        axes[0].set_title('Mask')
+
+        axes[1].imshow(image)
+        axes[1].set_title('Original Image')
+
+        axes[2].imshow(masked_image)
+        axes[2].set_title('Masked Image')
+
+        plt.show()
+        '''
+
+
+        return masked_image
+
     def segment_and_save(self, source_folder, image_filename, output_folder, segment_size=(512, 512)):
         image_path = os.path.join(source_folder, image_filename)
         image_name = image_filename.split('.')[0]

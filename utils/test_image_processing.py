@@ -22,7 +22,12 @@ def compare_images(im1, im2):
     plt.show()
 
 if __name__ == '__main__':
-    p = ImageProcessor(os.path.dirname(__file__), '2_Ortho_RGB', 'all_masks')
+    p = ImageProcessor(os.path.dirname(__file__), '2_Ortho_RGB', 'mask')
+
+
+    image = os.path.join(p.train_path, p.train_files[0])
+    p.apply_random_mask(image, "train")
+
 
     # Read a segmented image which to test
     #im1 = cv2.imread(os.path.join(p.train_path, p.train_files[4]))
