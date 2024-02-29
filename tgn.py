@@ -1,8 +1,7 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-import numpy as np
 from torch.nn.utils import spectral_norm
 from torchvision.models import vgg19, VGG19_Weights
 
@@ -11,14 +10,15 @@ from torchvision.models import vgg19, VGG19_Weights
 class Encoder(nn.Module):
     def __init__(self, in_channels=4):
         super(Encoder, self).__init__()
-        self.conv1 = spectral_norm(nn.Conv2d(in_channels, out_channels=64, kernel_size=3, stride=2, padding=0))
-        self.in1 = nn.InstanceNorm2d(64)
+        self.conv1 = spectral_norm(nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=3, stride=2,
+                                             padding=0))
+        self.in1 = nn.InstanceNorm2d(num_features=64)
         self.relu1 = nn.ReLU(inplace=True)
         self.conv2 = spectral_norm(nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=2))
-        self.in2 = nn.InstanceNorm2d(128)
+        self.in2 = nn.InstanceNorm2d(num_features=128)
         self.relu2 = nn.ReLU(inplace=True)
         self.conv3 = spectral_norm(nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, stride=2))
-        self.in3 = nn.InstanceNorm2d(256)
+        self.in3 = nn.InstanceNorm2d(num_features=256)
         self.relu3 = nn.ReLU(inplace=True)
 
     def forward(self, x):
@@ -36,13 +36,14 @@ class Encoder(nn.Module):
 
 # Define the Residual Block
 class ResidualBlock(nn.Module):
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, channels):
         super(ResidualBlock, self).__init__()
-        self.conv1 = spectral_norm(nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=2, stride=1, dilation=2))
-        self.in1 = nn.InstanceNorm2d(out_channels)
+        self.conv1 = spectral_norm(nn.Conv2d(in_channels=channels, out_channels=channels, kernel_size=3, padding=2,
+                                             stride=1, dilation=2))
+        self.in1 = nn.InstanceNorm2d(num_features=channels)
         self.relu = nn.ReLU(inplace=True)
-        self.conv2 = spectral_norm(nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1))
-        self.in2 = nn.InstanceNorm2d(out_channels)
+        self.conv2 = spectral_norm(nn.Conv2d(in_channels=channels, out_channels=channels, kernel_size=3, stride=1, padding=1))
+        self.in2 = nn.InstanceNorm2d(num_features=channels)
 
     def forward(self, x):
         identity = x
@@ -59,14 +60,16 @@ class ResidualBlock(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, in_channels):
         super(Decoder, self).__init__()
-        self.upconv1 = spectral_norm(nn.ConvTranspose2d(in_channels, 128, kernel_size=3, stride=2, padding=1))
-        self.in1 = nn.InstanceNorm2d(128)
+        self.upconv1 = spectral_norm(nn.ConvTranspose2d(in_channels=in_channels, out_channels=128, kernel_size=3,
+                                                        stride=2, padding=0))
+        self.in1 = nn.InstanceNorm2d(num_features=128)
         self.relu1 = nn.ReLU(inplace=True)
-        self.upconv2 = spectral_norm(nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=0))
-        self.in2 = nn.InstanceNorm2d(64)
+        self.upconv2 = spectral_norm(nn.ConvTranspose2d(in_channels=128, out_channels=64, kernel_size=3, stride=2,
+                                                        padding=0))
+        self.in2 = nn.InstanceNorm2d(num_features=64)
         self.relu2 = nn.ReLU(inplace=True)
-        self.upconv3 = nn.ConvTranspose2d(64, 1, kernel_size=3, stride=2, padding=0)
-        self.in3 = nn.InstanceNorm2d(1)
+        self.upconv3 = nn.ConvTranspose2d(in_channels=64, out_channels=1, kernel_size=3, stride=2, padding=0)
+        self.in3 = nn.InstanceNorm2d(num_features=1)
         self.relu3 = nn.ReLU(inplace=True)
 
     def forward(self, x):
@@ -85,19 +88,18 @@ class Decoder(nn.Module):
 class Discriminator(nn.Module):
     def __init__(self):
         super(Discriminator, self).__init__()
-        self.conv1 = spectral_norm(nn.Conv2d(in_channels=1, out_channels=64, kernel_size=3, stride=2, padding=1))
-        self.conv2 = spectral_norm(nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=2, padding=1))
-        self.conv3 = spectral_norm(nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, stride=2, padding=1))
+        self.conv1 = spectral_norm(nn.Conv2d(in_channels=1, out_channels=64, kernel_size=3, stride=2, padding=0))
+        self.conv2 = spectral_norm(nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=2, padding=0))
+        self.conv3 = spectral_norm(nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, stride=2, padding=0))
         self.conv4 = spectral_norm(nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, stride=2, padding=0))
-        self.conv5 = (nn.Conv2d(in_channels=512, out_channels=1, kernel_size=4, stride=2, padding=0))
+        self.conv5 = spectral_norm(nn.Conv2d(in_channels=512, out_channels=1, kernel_size=4, stride=2, padding=0))
 
     def forward(self, x):
         x = F.leaky_relu(self.conv1(x), negative_slope=0.2)
         x = F.leaky_relu(self.conv2(x), negative_slope=0.2)
         x = F.leaky_relu(self.conv3(x), negative_slope=0.2)
         x = F.leaky_relu(self.conv4(x), negative_slope=0.2)
-        x = F.leaky_relu(self.conv5(x))
-        x = torch.sigmoid(x)
+        x = F.leaky_relu(self.conv5(x), negative_slope=0.2)
         return x
 
 
@@ -105,7 +107,7 @@ class Generator(nn.Module):
     def __init__(self):
         super(Generator, self).__init__()
         self.encoder = Encoder(in_channels=4)
-        self.residual_blocks = nn.ModuleList([ResidualBlock(256, 256) for _ in range(8)])
+        self.residual_blocks = nn.ModuleList([ResidualBlock(256) for _ in range(8)])
         self.decoder = Decoder(in_channels=256)
 
     def forward(self, Im, Spred):
