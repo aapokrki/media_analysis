@@ -237,6 +237,11 @@ def get_style_model_and_loss(style_img):
             break
 
     model = model[:(i + 1)]
+    # We also put the model in evaluation mode, so that specific layers
+    # such as dropout or batch normalization layers behave correctly.
+    model.eval()
+    model.requires_grad_(False)
+
     print('model', model)
     print('style_losses', style_losses)
 
