@@ -177,19 +177,6 @@ class AdjustedBCELoss(nn.Module):
         
         return torch.mean(adjusted_loss)
 
-class AddNoise(nn.Module):
-    def __init__(self, mean, std):
-        super(AddNoise, self).__init__()
-        self.mean = mean
-        self.std = std
-
-    def forward(self, x):
-        if self.training:
-            noise = torch.randn_like(x) * self.std + self.mean
-            return x + noise
-        else:
-            return x
-
 # Define dataset and dataloader
 class EdgeDataset(Dataset):
     def __init__(self, image_path, mask_path, img_count, transform=None):
@@ -235,7 +222,7 @@ class EdgeDataset(Dataset):
             M = self.transform(M)
             Im = self.transform(Im)
 
-        return Im2, Sm, gt_edge, M, Im
+        return Im2, Sm, M, gt_edge, Im
 
 
 if __name__ == "__main__":
@@ -259,11 +246,7 @@ if __name__ == "__main__":
     val_dataset = EdgeDataset(validation_image_path, masks_path, val_amount, transform=transform)
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     
-
-
-    noise_layer = AddNoise(mean=0.0, std=0.05)
     n_critic = 2
-
 
     for epoch in range(num_epochs):
         # Training loop
@@ -278,12 +261,6 @@ if __name__ == "__main__":
             M = M.to(device)
             gt_edge = gt_edge.to(device)
             Im2 = Im2.to(device)
-
-            # Inject noise
-            Im = noise_layer(Im)
-            Sm = noise_layer(Sm)
-            M = noise_layer(M)
-            gt_edge = noise_layer(gt_edge)
 
             # Generate fake samples
             predicted = model(Im, Sm, M)
