@@ -23,10 +23,10 @@ validation_image_path = r'.\data\validation'
 model_path = r'.\model\model_G1_new.pth'
 
 # Parameters
-num_epochs = 10
+num_epochs = 15
 img_amount = 3200
 val_amount = 480
-batch_size = 8
+batch_size = 4
 learning_rate = 0.0001
 betas = (0.0, 0.9)
 
@@ -38,7 +38,7 @@ lambda_ = 5
 gamma = 2
 
 # Parameters for learning rate scheduler
-step_size_sc = 10
+step_size_sc = 5
 gamma_sc = 0.1
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

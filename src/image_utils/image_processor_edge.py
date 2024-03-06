@@ -4,10 +4,11 @@ import torch
 import matplotlib.pyplot as plt
 
 def create_edgemap(image):
-    edgemap = cv.Canny(image, 100, 250)
+    edgemap = cv.Canny(image, 150, 250)
     return edgemap
 
 def create_edgemap_missing(edgemap, mask):
+
     edgemap_copy = np.copy(edgemap)
     edgemap_copy[mask == 255] = 0
     return edgemap_copy
@@ -21,8 +22,8 @@ def create_image_missing(image, mask):
 
 def process_image(image, mask):
 
-    image = cv.resize(image, (256, 256))
-    mask = cv.resize(mask, (256, 256))
+    #image = cv.resize(image, (256, 256))
+    #mask = cv.resize(mask, (256, 256))
 
     edgemap = create_edgemap(image)
     edgemap_missing_data = create_edgemap_missing(edgemap, mask)

@@ -9,7 +9,8 @@ import image_utils.image_processor_edge as image_processor_edge
 import random
 
 # Specify which model you want to use. G1 for BCE loss (first part of PEGN) and G2 for adversarial loss (second part of PEGN)
-mode = "G1"
+mode = "G2"
+size = 512
 
 # Edit if you want to save the produced image
 #save_image = False
@@ -17,9 +18,10 @@ mode = "G1"
 
 # Edit threshold for which pixels are selected to the output
 threshold = 0.4
+#Best so far: model_G1_256, G2_test_best
 
 if mode == "G1":
-    model_path = r'.\model\model_G1_new.pth'
+    model_path = r'.\model\model_G1_256.pth'
     model = G1()
 elif mode == "G2":
     model_path = r'.\model\G2_test.pth'
@@ -44,8 +46,8 @@ mask_path = os.path.join(mask_folder, random_mask_file)
 print(image_path)
 print(mask_path)
 
-#mask_path = '.\\data\\test_mask\\mask\\testing_mask_dataset\\03988.png'
-#image_path = '.\\data\\test\\top_potsdam_6_7_RGB_8_3.jpg'
+#mask_path = '.\\data\\test_mask\\mask\\testing_mask_dataset\\07090.png'
+#image_path = '.\\data\\test\\top_potsdam_7_10_RGB_5_10.jpg'
 
 # Load the image and mask
 image = cv2.imread(image_path, cv2.IMREAD_COLOR)
@@ -53,7 +55,7 @@ mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
 
 # Process the image and mask through the image processor
 Im, Sm, gt_edge, M = image_processor_edge.process_image(image, mask)
-image = cv2.resize(image, (256, 256))
+image = cv2.resize(image, (size, size))
 
 # Convert processed images to PyTorch tensors
 Im_tensor = torch.tensor(Im).unsqueeze(0).unsqueeze(0)
@@ -61,16 +63,16 @@ Sm_tensor = torch.tensor(Sm).unsqueeze(0).unsqueeze(0)
 gt_edge_tensor = torch.tensor(gt_edge).unsqueeze(0).unsqueeze(0)
 M_tensor = torch.tensor(M).unsqueeze(0).unsqueeze(0)
 
-R_channel, G_channel, B_channel = cv2.split(image)
+R_channel, G_channel, B_channel = cv2.split(Im)
 R_channel = R_channel.astype(np.float32) / 255.0
 G_channel = G_channel.astype(np.float32) / 255.0
 B_channel = B_channel.astype(np.float32) / 255.0
 R_tensor = torch.tensor(R_channel).unsqueeze(0).unsqueeze(0)
 G_tensor = torch.tensor(G_channel).unsqueeze(0).unsqueeze(0)
 B_tensor = torch.tensor(B_channel).unsqueeze(0).unsqueeze(0)
-R_tensor = torch.nn.functional.interpolate(R_tensor, size=(256, 256), mode='nearest')
-G_tensor = torch.nn.functional.interpolate(G_tensor, size=(256, 256), mode='nearest')
-B_tensor = torch.nn.functional.interpolate(B_tensor, size=(256, 256), mode='nearest')
+R_tensor = torch.nn.functional.interpolate(R_tensor, size=(size, size), mode='nearest')
+G_tensor = torch.nn.functional.interpolate(G_tensor, size=(size, size), mode='nearest')
+B_tensor = torch.nn.functional.interpolate(B_tensor, size=(size, size), mode='nearest')
 
 # Send inputs to the model
 combined_input = torch.cat((R_tensor, G_tensor, B_tensor), dim=1)
@@ -94,39 +96,39 @@ overlay = cv2.addWeighted(cv2.cvtColor(Sm, cv2.COLOR_GRAY2BGR), 0.5, diff_colore
 #    cv2.imwrite(thresholded_edge_map_path, edge_map_thresholded_numpy * 255)
 
 # Visualize
-plt.figure(figsize=(15, 15))
+plt.figure(figsize=(20, 20))
 
-plt.subplot(3, 3, 1)
+plt.subplot(2, 4, 1)
 plt.imshow(image, cmap='gray')
 plt.title('Input Image')
 plt.axis('off')
 
-plt.subplot(3, 3, 2)
+plt.subplot(2, 4, 2)
 plt.imshow(mask, cmap='gray')
 plt.title('Mask')
 plt.axis('off')
 
-plt.subplot(3, 3, 3)
+plt.subplot(2, 4, 4)
 plt.imshow(Sm, cmap='gray')
 plt.title('Edge Map (Missing Data)')
 plt.axis('off')
 
-plt.subplot(3, 3, 4)
+plt.subplot(2, 4, 5)
 plt.imshow(predicted_edge_map, cmap='gray')
 plt.title('Predicted Edge Map')
 plt.axis('off')
 
-plt.subplot(3, 3, 5)
+plt.subplot(2, 4, 6)
 plt.imshow(edge_map_thresholded_numpy, cmap='gray')
 plt.title('Thresholded Edge Map')
 plt.axis('off')
 
-plt.subplot(3, 3, 6)
+plt.subplot(2, 4, 3)
 plt.imshow(gt_edge, cmap='gray')
 plt.title('Ground Truth Edge Map')
 plt.axis('off')
 
-plt.subplot(3, 3, 7)
+plt.subplot(2, 4, 7)
 plt.imshow(overlay)
 plt.title('Edges added by model')
 plt.axis('off')

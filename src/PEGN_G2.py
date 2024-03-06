@@ -21,15 +21,16 @@ masks_path = r'.\data\test_mask\mask\testing_mask_dataset'
 validation_image_path = r'.\data\validation'
 
 # Where to save model
-model_path = r'.\model\G2_test.pth'
+model_path = r'.\model\G2_test_full.pth'
 
 # Parameters
-num_epochs = 5
-img_amount = 3200
-val_amount = 480
+num_epochs = 30
+img_amount = 400
+val_amount = 40
 batch_size = 4
 learning_rate = 0.0001
-betas = (0.0, 0.9)
+d_learning_rate = 0.00002
+betas = (0.0, 0.90)
 
 # Training is stopped early if validation loss goes under this threshold
 min_loss_threshold = 0.0001
@@ -38,7 +39,7 @@ min_loss_threshold = 0.0001
 lambda_adv = 0.2
 
 # Parameters for learning rate scheduler
-step_size_sc = 10
+step_size_sc = 20
 gamma_sc = 0.1
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -94,18 +95,18 @@ class Decoder(nn.Module):
         self.in1 = nn.InstanceNorm2d(num_features=128)
         self.relu1 = nn.ReLU(inplace=True)
 
-        self.upconv2 = spectral_norm(nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=0))
+        self.upconv2 = spectral_norm(nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1))
         self.in2 = nn.InstanceNorm2d(num_features=64)
         self.relu2 = nn.ReLU(inplace=True)
 
-        self.upconv3 = nn.ConvTranspose2d(64, 1, kernel_size=4, stride=2, padding=0)
+        self.upconv3 = nn.ConvTranspose2d(64, 1, kernel_size=8, stride=2, padding=1)
         self.in3 = nn.InstanceNorm2d(num_features=1)
         self.relu3 = nn.ReLU(inplace=True)
         
     def forward(self, x):
         x = self.relu1(self.in1((self.upconv1(x))))
         x = self.relu2(self.in2((self.upconv2(x))))
-        x = self.relu3(self.in3((self.upconv3(x))))
+        x = self.upconv3(x)
         return x
 
 class Discriminator(nn.Module):
@@ -118,11 +119,12 @@ class Discriminator(nn.Module):
         self.conv5 = spectral_norm(nn.Conv2d(512, 1, kernel_size=4, stride=1, padding=0))
 
     def forward(self, x):
-        x = F.leaky_relu(self.conv1(x), negative_slope=0.2)
-        x = F.leaky_relu(self.conv2(x), negative_slope=0.2)
-        x = F.leaky_relu(self.conv3(x), negative_slope=0.2)
-        x = F.leaky_relu(self.conv4(x), negative_slope=0.2)
+        x = F.leaky_relu(self.conv1(x), negative_slope=0.2, inplace=True)
+        x = F.leaky_relu(self.conv2(x), negative_slope=0.2, inplace=True)
+        x = F.leaky_relu(self.conv3(x), negative_slope=0.2, inplace=True)
+        x = F.leaky_relu(self.conv4(x), negative_slope=0.2, inplace=True)
         x = self.conv5(x)
+        x = torch.sigmoid(x)
         return x
 
 
@@ -143,7 +145,6 @@ class G2(nn.Module):
             x = block(x)
         x = self.decoder(x)
         x = torch.sigmoid(x)
-
         return x
 
 class AdversarialLoss(nn.Module):
@@ -155,8 +156,6 @@ class AdversarialLoss(nn.Module):
 
         D_out_real = torch.clamp(D_out_real, self.epsilon, 1.0 - self.epsilon)
         D_out_fake = torch.clamp(D_out_fake, self.epsilon, 1.0 - self.epsilon)
-        #print(D_out_fake)
-        #print(D_out_real)
 
         # Compute adversarial loss
         adversarial_loss = torch.mean((torch.log(D_out_real)) + (torch.log(1 - D_out_fake)))
@@ -176,6 +175,19 @@ class AdjustedBCELoss(nn.Module):
                         (((1-mask)*(((output - target)**self.gamma)))*bce_loss)
         
         return torch.mean(adjusted_loss)
+
+class AddNoise(nn.Module):
+    def __init__(self, mean, std):
+        super(AddNoise, self).__init__()
+        self.mean = mean
+        self.std = std
+
+    def forward(self, x):
+        if self.training:
+            noise = torch.randn_like(x) * self.std + self.mean
+            return x + noise
+        else:
+            return x
 
 # Define dataset and dataloader
 class EdgeDataset(Dataset):
@@ -234,9 +246,11 @@ if __name__ == "__main__":
     g_loss = AdjustedBCELoss()
 
     g_optimizer = torch.optim.Adam(model.parameters(), betas=betas, lr=learning_rate)
-    d_optimizer = torch.optim.Adam(D.parameters(), betas=betas, lr=learning_rate)
+    d_optimizer = torch.optim.Adam(D.parameters(), betas=betas, lr=d_learning_rate)
 
-    scheduler = StepLR(d_optimizer, step_size=step_size_sc, gamma=gamma_sc)
+    scheduler_d = StepLR(d_optimizer, step_size=step_size_sc, gamma=gamma_sc)
+    scheduler_g = StepLR(g_optimizer, step_size=step_size_sc, gamma=gamma_sc)
+    
 
     transform = transforms.ToTensor()
 
@@ -246,7 +260,8 @@ if __name__ == "__main__":
     val_dataset = EdgeDataset(validation_image_path, masks_path, val_amount, transform=transform)
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     
-    n_critic = 2
+    n_critic = 1
+
 
     for epoch in range(num_epochs):
         # Training loop
@@ -256,6 +271,7 @@ if __name__ == "__main__":
         dis_running_loss = 0.0
 
         for Im, Sm, M, gt_edge, Im2 in train_dataloader:  
+
             Im = Im.to(device)
             Sm = Sm.to(device)
             M = M.to(device)
@@ -265,11 +281,10 @@ if __name__ == "__main__":
             # Generate fake samples
             predicted = model(Im, Sm, M)
 
-            # Train the discriminator multiple times
+            # Train the discriminator
             for _ in range(n_critic):
                 D_out_real = D(torch.cat((gt_edge, Im2), dim=1))
                 D_out_fake = D(torch.cat((predicted.detach(), Im2), dim=1))
-
                 adversarial_loss = d_loss(D_out_real, D_out_fake)
 
                 d_optimizer.zero_grad()
@@ -278,7 +293,7 @@ if __name__ == "__main__":
 
                 dis_running_loss += adversarial_loss.item() * Im.size(0)
 
-            # Train the generator twice
+            # Train the generator
             for _ in range(1):
                 D_out_fake = D(torch.cat((predicted, Im2), dim=1))
                 generator_loss = g_loss(predicted, gt_edge, M) - lambda_adv * adversarial_loss
@@ -290,11 +305,15 @@ if __name__ == "__main__":
                 gen_running_loss += generator_loss.item() * Im.size(0)
                 adv_running_loss += adversarial_loss.item() * Im.size(0)
 
-            scheduler.step()
+            scheduler_d.step()
+            scheduler_g.step()
             epoch_loss_adv = adv_running_loss / len(train_dataloader.dataset)
             epoch_loss_gen = gen_running_loss / (len(train_dataloader.dataset) * n_critic)
 
+
         print(f"Epoch [{epoch+1}/{num_epochs}], Adversarial loss: {epoch_loss_adv:.4f}, Generator loss: {epoch_loss_gen:.4f}")
+
+        torch.save(model.state_dict(), model_path)
 
         # Evaluation loop
         model.eval()
@@ -318,6 +337,6 @@ if __name__ == "__main__":
             print("Validation loss is below the minimum threshold. Stopping training.")
             break
 
-    torch.save(model.state_dict(), model_path)
+
 
     
