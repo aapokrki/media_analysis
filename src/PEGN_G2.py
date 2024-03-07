@@ -21,22 +21,19 @@ masks_path = r'.\data\test_mask\mask\testing_mask_dataset'
 validation_image_path = r'.\data\validation'
 
 # Where to save model
-model_path = r'.\model\G2_test_full.pth'
+model_path = r'.\model\G2_test_bce.pth'
 
 # Parameters
 num_epochs = 30
-img_amount = 400
-val_amount = 40
+img_amount = 3200
+val_amount = 320
 batch_size = 4
 learning_rate = 0.0001
-d_learning_rate = 0.00002
-betas = (0.0, 0.90)
+d_learning_rate = 0.00001
+betas = (0.0, 0.9)
 
 # Training is stopped early if validation loss goes under this threshold
 min_loss_threshold = 0.0001
-
-# Parameters for adversarial loss
-lambda_adv = 0.2
 
 # Parameters for learning rate scheduler
 step_size_sc = 20
@@ -95,11 +92,11 @@ class Decoder(nn.Module):
         self.in1 = nn.InstanceNorm2d(num_features=128)
         self.relu1 = nn.ReLU(inplace=True)
 
-        self.upconv2 = spectral_norm(nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1))
+        self.upconv2 = spectral_norm(nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=0))
         self.in2 = nn.InstanceNorm2d(num_features=64)
         self.relu2 = nn.ReLU(inplace=True)
 
-        self.upconv3 = nn.ConvTranspose2d(64, 1, kernel_size=8, stride=2, padding=1)
+        self.upconv3 = nn.ConvTranspose2d(64, 1, kernel_size=4, stride=2, padding=1)
         self.in3 = nn.InstanceNorm2d(num_features=1)
         self.relu3 = nn.ReLU(inplace=True)
         
@@ -109,6 +106,7 @@ class Decoder(nn.Module):
         x = self.upconv3(x)
         return x
 
+# Define the Discriminator
 class Discriminator(nn.Module):
     def __init__(self, in_channels=4):
         super(Discriminator, self).__init__()
@@ -119,14 +117,14 @@ class Discriminator(nn.Module):
         self.conv5 = spectral_norm(nn.Conv2d(512, 1, kernel_size=4, stride=1, padding=0))
 
     def forward(self, x):
-        x = F.leaky_relu(self.conv1(x), negative_slope=0.2, inplace=True)
-        x = F.leaky_relu(self.conv2(x), negative_slope=0.2, inplace=True)
-        x = F.leaky_relu(self.conv3(x), negative_slope=0.2, inplace=True)
-        x = F.leaky_relu(self.conv4(x), negative_slope=0.2, inplace=True)
-        x = self.conv5(x)
-        x = torch.sigmoid(x)
-        return x
-
+        conv1 = F.leaky_relu(self.conv1(x), negative_slope=0.2, inplace=True)
+        conv2 = F.leaky_relu(self.conv2(conv1), negative_slope=0.2, inplace=True)
+        conv3 = F.leaky_relu(self.conv3(conv2), negative_slope=0.2, inplace=True)
+        conv4 = F.leaky_relu(self.conv4(conv3), negative_slope=0.2, inplace=True)
+        conv5 = self.conv5(conv4)
+        #outputs = conv5
+        outputs = torch.sigmoid(conv5)
+        return outputs, [conv1, conv2, conv3, conv4, conv5]
 
 # Define the complete CNN model
 class G2(nn.Module):
@@ -175,19 +173,18 @@ class AdjustedBCELoss(nn.Module):
                         (((1-mask)*(((output - target)**self.gamma)))*bce_loss)
         
         return torch.mean(adjusted_loss)
+     
+class TestBCELoss(nn.Module):
+    def __init__(self, target_real_label=1.0, target_fake_label=0.0):
+        super(TestBCELoss, self).__init__()
+        self.register_buffer('real_label', torch.tensor(target_real_label))
+        self.register_buffer('fake_label', torch.tensor(target_fake_label))
+        self.criterion = nn.BCELoss()
 
-class AddNoise(nn.Module):
-    def __init__(self, mean, std):
-        super(AddNoise, self).__init__()
-        self.mean = mean
-        self.std = std
-
-    def forward(self, x):
-        if self.training:
-            noise = torch.randn_like(x) * self.std + self.mean
-            return x + noise
-        else:
-            return x
+    def __call__(self, output, is_real):
+        labels = (self.real_label.to(device) if is_real else self.fake_label.to(device)).expand_as(output)
+        loss = self.criterion(output, labels)
+        return loss
 
 # Define dataset and dataloader
 class EdgeDataset(Dataset):
@@ -236,14 +233,16 @@ class EdgeDataset(Dataset):
 
         return Im2, Sm, M, gt_edge, Im
 
-
 if __name__ == "__main__":
     model = G2()
     model.to(device)
     D = Discriminator().to(device)
 
-    d_loss = AdversarialLoss()
     g_loss = AdjustedBCELoss()
+    d_loss_test = TestBCELoss()
+
+    # Not sure why this is needed, but edge-connect uses it so it is here
+    l1_loss = nn.L1Loss()
 
     g_optimizer = torch.optim.Adam(model.parameters(), betas=betas, lr=learning_rate)
     d_optimizer = torch.optim.Adam(D.parameters(), betas=betas, lr=d_learning_rate)
@@ -251,7 +250,6 @@ if __name__ == "__main__":
     scheduler_d = StepLR(d_optimizer, step_size=step_size_sc, gamma=gamma_sc)
     scheduler_g = StepLR(g_optimizer, step_size=step_size_sc, gamma=gamma_sc)
     
-
     transform = transforms.ToTensor()
 
     train_dataset = EdgeDataset(training_image_path, masks_path, img_amount, transform=transform)
@@ -259,18 +257,19 @@ if __name__ == "__main__":
 
     val_dataset = EdgeDataset(validation_image_path, masks_path, val_amount, transform=transform)
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-    
-    n_critic = 1
-
 
     for epoch in range(num_epochs):
         # Training loop
         model.train()
-        adv_running_loss = 0.0
         gen_running_loss = 0.0
         dis_running_loss = 0.0
 
         for Im, Sm, M, gt_edge, Im2 in train_dataloader:  
+            gen_loss = 0
+            dis_loss = 0
+
+            d_optimizer.zero_grad()
+            g_optimizer.zero_grad()
 
             Im = Im.to(device)
             Sm = Sm.to(device)
@@ -281,37 +280,44 @@ if __name__ == "__main__":
             # Generate fake samples
             predicted = model(Im, Sm, M)
 
-            # Train the discriminator
-            for _ in range(n_critic):
-                D_out_real = D(torch.cat((gt_edge, Im2), dim=1))
-                D_out_fake = D(torch.cat((predicted.detach(), Im2), dim=1))
-                adversarial_loss = d_loss(D_out_real, D_out_fake)
+            # discriminator
+            D_out_real, dis_real_feat = D(torch.cat((Im2, gt_edge), dim=1))
+            D_out_fake, dis_fake_feat = D(torch.cat((Im2, predicted.detach()), dim=1))
 
-                d_optimizer.zero_grad()
-                adversarial_loss.backward(retain_graph=True)
-                d_optimizer.step()
+            real_loss = d_loss_test(D_out_real, True)
+            fake_loss = d_loss_test(D_out_fake, False)
+            dis_loss = (real_loss + fake_loss) / 2
 
-                dis_running_loss += adversarial_loss.item() * Im.size(0)
+            # generator
+            D_out_fake, gen_fake_feat = D(torch.cat((Im2, predicted), dim=1))
+            g_gan_loss = d_loss_test(D_out_fake, True)
+            gen_loss += g_gan_loss
 
-            # Train the generator
-            for _ in range(1):
-                D_out_fake = D(torch.cat((predicted, Im2), dim=1))
-                generator_loss = g_loss(predicted, gt_edge, M) - lambda_adv * adversarial_loss
+            # edge-connect copy paste
+            gen_fm_loss = 0
+            for i in range(len(dis_real_feat)):
+                gen_fm_loss += l1_loss(gen_fake_feat[i], dis_real_feat[i].detach())
+            gen_fm_loss = gen_fm_loss * 10
+            gen_loss += gen_fm_loss
 
-                g_optimizer.zero_grad()
-                generator_loss.backward(retain_graph=True)
-                g_optimizer.step() 
+            gen_running_loss += gen_loss
+            dis_running_loss += dis_loss
 
-                gen_running_loss += generator_loss.item() * Im.size(0)
-                adv_running_loss += adversarial_loss.item() * Im.size(0)
+            if dis_loss is not None:
+                dis_loss.backward()
+            d_optimizer.step()
+
+            if gen_loss is not None:
+                gen_loss.backward()
+            g_optimizer.step()
 
             scheduler_d.step()
             scheduler_g.step()
-            epoch_loss_adv = adv_running_loss / len(train_dataloader.dataset)
-            epoch_loss_gen = gen_running_loss / (len(train_dataloader.dataset) * n_critic)
 
+        epoch_loss_adv = dis_running_loss / len(train_dataloader.dataset)
+        epoch_loss_gen = gen_running_loss / len(train_dataloader.dataset)
 
-        print(f"Epoch [{epoch+1}/{num_epochs}], Adversarial loss: {epoch_loss_adv:.4f}, Generator loss: {epoch_loss_gen:.4f}")
+        print(f"Epoch [{epoch+1}/{num_epochs}], Discriminator loss: {epoch_loss_adv:.4f}, Generator loss: {epoch_loss_gen:.4f}")
 
         torch.save(model.state_dict(), model_path)
 
