@@ -62,6 +62,7 @@ class ImageProcessor:
         self.test_path = os.path.join(parent_folder,'data', 'test')
         self.validation_path = os.path.join(parent_folder,'data', 'validation')
 
+
         #Create train, test and validation folders if needed
         for folder in [self.train_path, self.test_path, self.validation_path]:
             os.makedirs(folder, exist_ok=True)
@@ -78,6 +79,7 @@ class ImageProcessor:
 
         #Initialize mask filepath list
         self.mask_path = os.path.join(parent_folder, 'data', mask_folder_name, 'mask', 'testing_mask_dataset')
+
         self.mask_files = os.listdir(self.mask_path)
 
         #Initialize mask ranges based on training, testing and validation ratios

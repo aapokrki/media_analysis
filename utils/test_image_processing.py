@@ -1,7 +1,8 @@
 
 import cv2
 from matplotlib import pyplot as plt
-from image_processor import ImageProcessor
+
+from utils.image_processor import ImageProcessor
 
 '''
 Demonstrates the capabilities of the ImageProcessor class by performing various image manipulations
