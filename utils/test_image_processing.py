@@ -1,6 +1,7 @@
 
 import cv2
 from matplotlib import pyplot as plt
+
 from utils.image_processor import ImageProcessor
 
 '''

@@ -52,13 +52,16 @@ class ImageProcessor:
 
         #Initialize dataset filepaths
         self.base_folder = os.path.dirname(__file__)
-        self.dataset_path = os.path.join(self.base_folder, '..','data', dataset_folder_name)
+        parent_folder = os.path.abspath(os.path.join(self.base_folder, '..'))
+        self.dataset_path = os.path.join(parent_folder,'data', dataset_folder_name)
+        print(self.dataset_path)
         self.dataset_files = [f for f in os.listdir(self.dataset_path) if f.endswith('.tif')]
 
         #Initialize train, test and validation paths
-        self.train_path = os.path.join(self.base_folder, '..','data', 'train')
-        self.test_path = os.path.join(self.base_folder, '..','data', 'test')
-        self.validation_path = os.path.join(self.base_folder, '..','data', 'validation')
+        self.train_path = os.path.join(parent_folder,'data', 'train')
+        self.test_path = os.path.join(parent_folder,'data', 'test')
+        self.validation_path = os.path.join(parent_folder,'data', 'validation')
+
 
         #Create train, test and validation folders if needed
         for folder in [self.train_path, self.test_path, self.validation_path]:
@@ -75,7 +78,8 @@ class ImageProcessor:
         self.validation_image_range = range(self.test_image_range.stop + 1, self.test_image_range.stop + int(len(self.dataset_files) * self.validation))
 
         #Initialize mask filepath list
-        self.mask_path = os.path.join(self.base_folder, '..', 'data', mask_folder_name, 'mask', 'testing_mask_dataset')
+        self.mask_path = os.path.join(parent_folder, 'data', mask_folder_name, 'mask', 'testing_mask_dataset')
+
         self.mask_files = os.listdir(self.mask_path)
 
         #Initialize mask ranges based on training, testing and validation ratios
